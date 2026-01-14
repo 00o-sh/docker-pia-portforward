@@ -19,12 +19,13 @@ WORKDIR /opt/pia
 RUN git clone --depth 1 https://github.com/pia-foss/manual-connections.git . && \
     chmod +x *.sh
 
-# Create entrypoint script
+# Create entrypoint script and port forwarding loop
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY port-forward-loop.sh /usr/local/bin/port-forward-loop.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/port-forward-loop.sh
 
-# Create directory for PIA config
-RUN mkdir -p /etc/pia
+# Create directories for PIA config and port data
+RUN mkdir -p /etc/pia /config
 
 WORKDIR /opt/pia
 
