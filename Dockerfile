@@ -8,6 +8,9 @@ LABEL org.opencontainers.image.source="https://github.com/00o-sh/docker-pia-port
 LABEL org.opencontainers.image.licenses="MIT"
 
 # Install required packages for port forwarding only
+# hadolint ignore=DL3018
+# Versions not pinned intentionally to receive security updates from base image.
+# These are stable utilities (bash, curl, jq) with minimal API surface.
 RUN apk add --no-cache \
     bash \
     curl \
