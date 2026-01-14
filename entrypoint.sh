@@ -98,11 +98,21 @@ log "VPN connection established successfully!"
 
 # Enable port forwarding if requested
 if [[ "${PIA_PF}" == "true" ]]; then
-    log "Enabling port forwarding..."
-    if ./port_forwarding.sh; then
-        log "Port forwarding enabled"
+    log "Enabling port forwarding with auto-refresh..."
+    # Run port forward loop in background
+    /usr/local/bin/port-forward-loop.sh &
+    PF_PID=$!
+    log "Port forwarding loop started (PID: ${PF_PID})"
+
+    # Give it a moment to get initial port
+    sleep 5
+
+    # Check if port file was created
+    if [[ -f /config/pia-port.txt ]]; then
+        PF_PORT=$(cat /config/pia-port.txt)
+        log "Port forwarding enabled on port: ${PF_PORT}"
     else
-        warn "Failed to enable port forwarding"
+        warn "Port forwarding may not have initialized yet"
     fi
 fi
 
