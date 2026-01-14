@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pia-portforward.fullname" . }}
+  labels:
+    {{- include "pia-portforward.labels" . | nindent 4 }}
+data:
+  refresh-interval: {{ .Values.pia.refreshInterval | quote }}
+  port-file: {{ .Values.portFile.path | quote }}
+  port-data-file: {{ .Values.portFile.dataPath | quote }}
+  {{- if .Values.pia.gateway }}
+  pia-gateway: {{ .Values.pia.gateway | quote }}
+  {{- end }}
+  {{- if .Values.qbittorrent.enabled }}
+  qbittorrent-host: {{ .Values.qbittorrent.host | quote }}
+  qbittorrent-user: {{ .Values.qbittorrent.user | quote }}
+  {{- end }}

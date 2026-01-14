@@ -1,0 +1,38 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your PIA Port Forwarding Manager has been deployed.
+
+Chart version: {{ .Chart.Version }}
+App version: {{ .Chart.AppVersion }}
+
+Configuration:
+- PIA User: {{ .Values.pia.user }}
+- Refresh Interval: {{ .Values.pia.refreshInterval }}s
+{{- if .Values.qbittorrent.enabled }}
+- qBittorrent Integration: ENABLED
+  - Host: {{ .Values.qbittorrent.host }}
+{{- else }}
+- qBittorrent Integration: DISABLED
+{{- end }}
+{{- if .Values.multus.enabled }}
+- Multus Network: {{ .Values.multus.networkName }}
+{{- end }}
+
+To check the status of your deployment:
+
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "pia-portforward.name" . }}
+
+To view logs and see the forwarded port:
+
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "pia-portforward.name" . }} -f
+
+{{- if .Values.persistence.enabled }}
+
+The forwarded port is saved to:
+  {{ .Values.portFile.path }}
+
+You can read this file from other containers by sharing the PVC.
+{{- end }}
+
+For more information, visit:
+  https://github.com/00o-sh/docker-pia-portforward

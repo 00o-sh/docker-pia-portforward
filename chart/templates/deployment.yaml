@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pia-portforward.fullname" . }}
+  labels:
+    {{- include "pia-portforward.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "pia-portforward.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.multus.enabled }}
+        k8s.v1.cni.cncf.io/networks: {{ .Values.multus.networkName }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "pia-portforward.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "pia-portforward.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: PIA_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: pia-user
+        - name: PIA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: pia-password
+        - name: PORT_FORWARD_REFRESH_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: refresh-interval
+        - name: PORT_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: port-file
+        - name: PORT_DATA_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: port-data-file
+        {{- if .Values.pia.gateway }}
+        - name: PIA_GATEWAY
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: pia-gateway
+        {{- end }}
+        {{- if .Values.qbittorrent.enabled }}
+        - name: QBITTORRENT_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: qbittorrent-host
+        - name: QBITTORRENT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: qbittorrent-user
+        - name: QBITTORRENT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "pia-portforward.fullname" . }}
+              key: qbittorrent-password
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+      - name: config
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.persistence.existingClaim | default (include "pia-portforward.fullname" .) }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

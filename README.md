@@ -62,7 +62,30 @@ Automatically update qBittorrent's listening port when port forwarding is enable
 - `QBITTORRENT_USER` - Web UI username (default: `admin`)
 - `QBITTORRENT_PASS` - Web UI password
 
-## Building
+## Installation
+
+### Helm Chart (Recommended for Kubernetes)
+
+The easiest way to deploy on Kubernetes is using the Helm chart:
+
+```bash
+# Install from OCI registry
+helm install pia-portforward oci://ghcr.io/00o-sh/charts/pia-portforward \
+  --set pia.user=p1234567 \
+  --set pia.password=your_password
+
+# With qBittorrent integration
+helm install pia-portforward oci://ghcr.io/00o-sh/charts/pia-portforward \
+  --set pia.user=p1234567 \
+  --set pia.password=your_password \
+  --set qbittorrent.enabled=true \
+  --set qbittorrent.host=http://qbittorrent:8080 \
+  --set qbittorrent.password=adminpass
+```
+
+See [chart/README.md](chart/README.md) for full documentation.
+
+### Building Container Image
 
 ```bash
 docker build -t pia-portforward:latest .
@@ -181,9 +204,18 @@ volumes:
 
 ## Kubernetes Deployment
 
-### With Multus and Router-Level VPN
+**Recommended:** Use the [Helm chart](chart/README.md) for easy installation:
+```bash
+helm install pia-portforward oci://ghcr.io/00o-sh/charts/pia-portforward \
+  --set pia.user=p1234567 \
+  --set pia.password=your_password \
+  --set multus.enabled=true \
+  --set multus.networkName=pia-vlan-network
+```
 
-If you have a router-level PIA VPN connection and use Multus to attach containers to a VLAN routed through PIA:
+### Manual Deployment with Multus and Router-Level VPN
+
+If you prefer to deploy manually, here's an example for router-level PIA VPN with Multus:
 
 ```yaml
 apiVersion: v1
