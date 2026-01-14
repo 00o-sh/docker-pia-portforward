@@ -17,6 +17,8 @@ The container only handles the port forwarding API and refresh cycle.
 - Exposes port to file for use by other containers
 - Lightweight Alpine-based image
 - No VPN overhead - works with existing VPN setup
+- Runs as non-root user (UID 1000) for security
+- OCI-compliant with proper labels
 
 ## How It Works
 
@@ -64,6 +66,18 @@ Automatically update qBittorrent's listening port when port forwarding is enable
 
 ```bash
 docker build -t pia-portforward:latest .
+```
+
+## Security
+
+This container runs as a non-root user (UID/GID 1000) for security. Ensure mounted volumes have appropriate permissions:
+
+```bash
+# For Docker
+mkdir -p ./config
+chown 1000:1000 ./config
+
+# For Kubernetes - PVC permissions are handled automatically
 ```
 
 ## Running
@@ -210,9 +224,17 @@ spec:
       annotations:
         k8s.v1.cni.cncf.io/networks: pia-vlan-network
     spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
       - name: pia-portforward
         image: pia-portforward:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
         envFrom:
         - configMapRef:
             name: pia-portforward-config
