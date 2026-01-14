@@ -1,0 +1,19 @@
+apiVersion: v2
+name: pia-portforward
+description: PIA Port Forwarding Manager with qBittorrent integration
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - pia
+  - vpn
+  - port-forwarding
+  - qbittorrent
+  - torrenting
+home: https://github.com/00o-sh/docker-pia-portforward
+sources:
+  - https://github.com/00o-sh/docker-pia-portforward
+maintainers:
+  - name: 00o-sh
+    url: https://github.com/00o-sh
+icon: https://www.privateinternetaccess.com/assets/PIALogo2x-0d1e1094ac909ea4c93df06e2da3db4cd8a73d8b2770f0f7649938a3036e2e80.png

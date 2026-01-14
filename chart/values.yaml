@@ -1,0 +1,96 @@
+# Default values for pia-portforward chart
+
+image:
+  repository: ghcr.io/00o-sh/pia-portforward
+  pullPolicy: IfNotPresent
+  tag: "" # Defaults to Chart appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# PIA credentials (required)
+pia:
+  # PIA username (format: p1234567)
+  user: ""
+  # PIA password
+  password: ""
+  # Manually specify PIA gateway (optional - auto-detected by default)
+  gateway: ""
+  # Port forward refresh interval in seconds
+  refreshInterval: 900
+
+# qBittorrent integration (optional)
+qbittorrent:
+  enabled: false
+  # qBittorrent Web UI host
+  host: "http://qbittorrent:8080"
+  # qBittorrent Web UI username
+  user: "admin"
+  # qBittorrent Web UI password
+  password: ""
+
+# Port file configuration
+portFile:
+  # Location to save port number
+  path: "/config/pia-port.txt"
+  # Location to save detailed port data JSON
+  dataPath: "/config/pia-port-data.json"
+
+# Multus networking (for router-level VPN)
+multus:
+  enabled: false
+  # NetworkAttachmentDefinition name
+  networkName: "pia-vlan-network"
+
+# Persistent storage for port data
+persistence:
+  enabled: true
+  # Storage class (leave empty for default)
+  storageClass: ""
+  accessMode: ReadWriteMany
+  size: 1Mi
+  # Existing claim name (if you want to use an existing PVC)
+  existingClaim: ""
+
+# Pod security context
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+# Resources
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
