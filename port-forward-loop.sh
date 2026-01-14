@@ -39,7 +39,7 @@ QB_COOKIE_FILE="/tmp/qbittorrent-cookies.txt"
 
 # PIA API endpoints
 PIA_TOKEN=""
-PIA_GATEWAY=""
+PIA_GATEWAY="${PIA_GATEWAY:-}"  # Can be set via environment variable
 
 # Function to get PIA auth token
 get_pia_token() {
@@ -69,14 +69,27 @@ get_pia_token() {
 
 # Function to detect PIA gateway
 detect_gateway() {
-    log "Detecting PIA gateway..."
+    # If gateway already set via environment, use it
+    if [[ -n "${PIA_GATEWAY}" ]]; then
+        log "Using configured gateway: ${PIA_GATEWAY}"
+        return 0
+    fi
+
+    log "Detecting PIA gateway from routing table..."
+
+    # Show routing table for debugging
+    info "Current routes:"
+    ip route | while read line; do
+        info "  ${line}"
+    done
 
     # Try to get gateway from default route
     local gateway
     gateway=$(ip route | grep default | awk '{print $3}' | head -1)
 
     if [[ -z "${gateway}" ]]; then
-        error "Could not detect gateway IP"
+        error "Could not detect gateway IP from default route"
+        error "You may need to set PIA_GATEWAY environment variable manually"
         return 1
     fi
 
