@@ -67,15 +67,32 @@ get_pia_token() {
     return 0
 }
 
-# Function to detect PIA gateway
+# Function to test if a gateway responds to PIA API
+test_gateway() {
+    local test_gw=$1
+
+    # Try to hit the PIA port forward API endpoint
+    if curl -s -m 2 "http://${test_gw}:19999/" &>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Function to detect PIA gateway intelligently
 detect_gateway() {
     # If gateway already set via environment, use it
     if [[ -n "${PIA_GATEWAY}" ]]; then
         log "Using configured gateway: ${PIA_GATEWAY}"
-        return 0
+        if test_gateway "${PIA_GATEWAY}"; then
+            log "Configured gateway is responding"
+            return 0
+        else
+            warn "Configured gateway ${PIA_GATEWAY} is not responding on port 19999"
+            warn "Will try to auto-detect..."
+        fi
     fi
 
-    log "Detecting PIA gateway from routing table..."
+    log "Auto-detecting PIA gateway..."
 
     # Show routing table for debugging
     info "Current routes:"
@@ -83,19 +100,61 @@ detect_gateway() {
         info "  ${line}"
     done
 
-    # Try to get gateway from default route
-    local gateway
-    gateway=$(ip route | grep default | awk '{print $3}' | head -1)
+    # Build list of gateway candidates
+    local candidates=()
 
-    if [[ -z "${gateway}" ]]; then
-        error "Could not detect gateway IP from default route"
-        error "You may need to set PIA_GATEWAY environment variable manually"
-        return 1
+    # 1. Try default gateway first (works with gluetun/container networking)
+    local default_gw
+    default_gw=$(ip route | grep default | awk '{print $3}' | head -1)
+    if [[ -n "${default_gw}" ]]; then
+        candidates+=("${default_gw}")
     fi
 
-    PIA_GATEWAY="${gateway}"
-    log "Gateway detected: ${PIA_GATEWAY}"
-    return 0
+    # 2. Add common PIA internal gateway IPs
+    # PIA typically uses 10.x.0.1 or similar for WireGuard/OpenVPN gateways
+    candidates+=(
+        "10.0.0.1"
+        "10.2.0.1"
+        "10.4.0.1"
+        "10.6.0.1"
+        "10.8.0.1"
+        "10.10.0.1"
+    )
+
+    # 3. Try to find other 10.x IPs in routing table
+    local route_ips
+    route_ips=$(ip route | grep -oE '10\.[0-9]+\.[0-9]+\.[0-9]+' | sort -u)
+    for ip in ${route_ips}; do
+        # Try the .1 of each subnet found
+        local subnet_gw="${ip%.*}.1"
+        candidates+=("${subnet_gw}")
+    done
+
+    # Remove duplicates
+    local unique_candidates=($(printf "%s\n" "${candidates[@]}" | sort -u))
+
+    log "Testing ${#unique_candidates[@]} gateway candidates..."
+
+    # Test each candidate
+    for candidate in "${unique_candidates[@]}"; do
+        info "Testing ${candidate}..."
+        if test_gateway "${candidate}"; then
+            log "✓ Found PIA gateway: ${candidate}"
+            PIA_GATEWAY="${candidate}"
+            return 0
+        fi
+    done
+
+    # If we get here, nothing worked
+    error "Could not detect PIA gateway"
+    error "Tried the following candidates:"
+    for candidate in "${unique_candidates[@]}"; do
+        error "  - ${candidate}"
+    done
+    error ""
+    error "Please set PIA_GATEWAY environment variable manually"
+    error "Find your PIA gateway IP and set: PIA_GATEWAY=10.x.x.1"
+    return 1
 }
 
 # Function to get port forward from PIA

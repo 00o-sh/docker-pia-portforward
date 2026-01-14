@@ -20,11 +20,17 @@ The container only handles the port forwarding API and refresh cycle.
 
 ## How It Works
 
-1. Container detects the PIA gateway from your existing VPN connection
+1. Container intelligently detects the PIA gateway by:
+   - Testing the default gateway (works with gluetun/container networking)
+   - Probing common PIA internal IPs (10.x.0.1 addresses)
+   - Testing endpoints found in the routing table
+   - Verifying each candidate responds on port 19999 (PIA API port)
 2. Authenticates with PIA and requests port forward
 3. Saves forwarded port to `/config/pia-port.txt`
 4. Optionally updates qBittorrent with the new port
 5. Refreshes port binding every 15 minutes to maintain the assignment
+
+**No configuration needed** - gateway detection works automatically with gluetun, router-level VPN, and most other setups.
 
 ## Prerequisites
 
@@ -44,7 +50,7 @@ The container only handles the port forwarding API and refresh cycle.
 - `PORT_FORWARD_REFRESH_INTERVAL` - Seconds between port refresh (default: `900` = 15 minutes)
 - `PORT_FILE` - Location to save forwarded port number (default: `/config/pia-port.txt`)
 - `PORT_DATA_FILE` - Location to save detailed port data JSON (default: `/config/pia-port-data.json`)
-- `PIA_GATEWAY` - Manually specify PIA gateway IP (default: auto-detect from routing table)
+- `PIA_GATEWAY` - Manually specify PIA gateway IP (default: auto-detect via intelligent probing - rarely needed)
 
 ### qBittorrent Integration
 
@@ -291,16 +297,23 @@ This means the container isn't on a network that routes through the VPN. Make su
 
 ### "Could not detect gateway IP"
 
-The container couldn't find the VPN gateway. Ensure your VPN connection is established before starting this container.
+The container tests multiple gateway candidates automatically. If detection fails, check the logs - it will show which candidates were tested.
 
-If using Multus or custom networking, you may need to manually specify the gateway:
+**Common causes:**
+- VPN not connected yet (wait for VPN to establish first)
+- Non-standard PIA gateway IP
+- Firewall blocking port 19999
+
+The error message will show all tested IPs. If you see your PIA gateway in the list but it's not responding, check:
+1. Is the VPN actually connected? (`curl https://api.ipify.org` should show a PIA IP)
+2. Is port 19999 accessible? (`curl -v http://<gateway>:19999/`)
+
+**Manual override (rarely needed):**
 ```yaml
 env:
   - name: PIA_GATEWAY
     value: "10.x.x.1"  # Your PIA gateway IP
 ```
-
-Check your routing table to find the gateway: `ip route`
 
 ### "Port forward request failed"
 
