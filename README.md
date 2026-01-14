@@ -2,7 +2,12 @@
 
 Lightweight Docker container for managing PIA (Private Internet Access) port forwarding with automatic refresh and qBittorrent integration.
 
-**Note:** This container does NOT establish a VPN connection. It assumes you already have containers running through a PIA VPN (e.g., using gluetun, another VPN container, or network routing). This container only handles the port forwarding API and refresh cycle.
+**Note:** This container does NOT establish a VPN connection. It assumes you already have containers running through a PIA VPN. This works with:
+- Container networking (gluetun, etc.)
+- Kubernetes with Multus/CNI plugins
+- Router-level VPN where entire VLANs are routed through PIA
+
+The container only handles the port forwarding API and refresh cycle.
 
 ## Features
 
@@ -15,11 +20,17 @@ Lightweight Docker container for managing PIA (Private Internet Access) port for
 
 ## How It Works
 
-1. Container detects the PIA gateway from your existing VPN connection
+1. Container intelligently detects the PIA gateway by:
+   - Testing the default gateway (works with gluetun/container networking)
+   - Probing common PIA internal IPs (10.x.0.1 addresses)
+   - Testing endpoints found in the routing table
+   - Verifying each candidate responds on port 19999 (PIA API port)
 2. Authenticates with PIA and requests port forward
 3. Saves forwarded port to `/config/pia-port.txt`
 4. Optionally updates qBittorrent with the new port
 5. Refreshes port binding every 15 minutes to maintain the assignment
+
+**No configuration needed** - gateway detection works automatically with gluetun, router-level VPN, and most other setups.
 
 ## Prerequisites
 
@@ -39,6 +50,7 @@ Lightweight Docker container for managing PIA (Private Internet Access) port for
 - `PORT_FORWARD_REFRESH_INTERVAL` - Seconds between port refresh (default: `900` = 15 minutes)
 - `PORT_FILE` - Location to save forwarded port number (default: `/config/pia-port.txt`)
 - `PORT_DATA_FILE` - Location to save detailed port data JSON (default: `/config/pia-port-data.json`)
+- `PIA_GATEWAY` - Manually specify PIA gateway IP (default: auto-detect via intelligent probing - rarely needed)
 
 ### qBittorrent Integration
 
@@ -153,6 +165,110 @@ volumes:
   pia-data:
 ```
 
+## Kubernetes Deployment
+
+### With Multus and Router-Level VPN
+
+If you have a router-level PIA VPN connection and use Multus to attach containers to a VLAN routed through PIA:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pia-portforward-config
+  namespace: media
+data:
+  PIA_USER: "p1234567"
+  PORT_FORWARD_REFRESH_INTERVAL: "900"
+  QBITTORRENT_HOST: "http://qbittorrent:8080"
+  QBITTORRENT_USER: "admin"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pia-portforward-secrets
+  namespace: media
+type: Opaque
+stringData:
+  PIA_PASS: "your_password"
+  QBITTORRENT_PASS: "adminpass"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pia-portforward
+  namespace: media
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pia-portforward
+  template:
+    metadata:
+      labels:
+        app: pia-portforward
+      annotations:
+        k8s.v1.cni.cncf.io/networks: pia-vlan-network
+    spec:
+      containers:
+      - name: pia-portforward
+        image: pia-portforward:latest
+        envFrom:
+        - configMapRef:
+            name: pia-portforward-config
+        - secretRef:
+            name: pia-portforward-secrets
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: pia-portforward-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pia-portforward-config
+  namespace: media
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Mi
+```
+
+### Multus NetworkAttachmentDefinition Example
+
+```yaml
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: pia-vlan-network
+  namespace: media
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "type": "macvlan",
+      "master": "eth1",
+      "mode": "bridge",
+      "ipam": {
+        "type": "dhcp"
+      }
+    }
+```
+
+This assumes `eth1` is connected to a VLAN that routes through your PIA VPN at the router level.
+
 ## Port Files
 
 ### `/config/pia-port.txt`
@@ -181,7 +297,23 @@ This means the container isn't on a network that routes through the VPN. Make su
 
 ### "Could not detect gateway IP"
 
-The container couldn't find the VPN gateway. Ensure your VPN connection is established before starting this container.
+The container tests multiple gateway candidates automatically. If detection fails, check the logs - it will show which candidates were tested.
+
+**Common causes:**
+- VPN not connected yet (wait for VPN to establish first)
+- Non-standard PIA gateway IP
+- Firewall blocking port 19999
+
+The error message will show all tested IPs. If you see your PIA gateway in the list but it's not responding, check:
+1. Is the VPN actually connected? (`curl https://api.ipify.org` should show a PIA IP)
+2. Is port 19999 accessible? (`curl -v http://<gateway>:19999/`)
+
+**Manual override (rarely needed):**
+```yaml
+env:
+  - name: PIA_GATEWAY
+    value: "10.x.x.1"  # Your PIA gateway IP
+```
 
 ### "Port forward request failed"
 
