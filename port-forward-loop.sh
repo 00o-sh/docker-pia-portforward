@@ -24,10 +24,45 @@ info() {
     echo -e "${BLUE}[PIA-PF INFO]${NC} $*"
 }
 
+# Metrics tracking functions
+init_metrics() {
+    # Initialize metrics file with zeros if it doesn't exist
+    if [[ ! -f "${METRICS_FILE}" ]]; then
+        cat > "${METRICS_FILE}" <<EOF
+pia_refresh_success_total 0
+pia_refresh_failure_total 0
+pia_port_changes_total 0
+pia_qbittorrent_update_success_total 0
+pia_qbittorrent_update_failure_total 0
+EOF
+    fi
+}
+
+increment_metric() {
+    local metric_name=$1
+    init_metrics
+
+    # Read current value, increment, and write back
+    local current_value=0
+    if grep -q "^${metric_name}" "${METRICS_FILE}" 2>/dev/null; then
+        current_value=$(grep "^${metric_name}" "${METRICS_FILE}" | awk '{print $2}' || echo "0")
+    fi
+
+    local new_value=$((current_value + 1))
+
+    # Update the metric in the file
+    if grep -q "^${metric_name}" "${METRICS_FILE}" 2>/dev/null; then
+        sed -i "s/^${metric_name} .*/${metric_name} ${new_value}/" "${METRICS_FILE}"
+    else
+        echo "${metric_name} ${new_value}" >> "${METRICS_FILE}"
+    fi
+}
+
 # Configuration
 PORT_FILE="${PORT_FILE:-/config/pia-port.txt}"
 PORT_DATA_FILE="${PORT_DATA_FILE:-/config/pia-port-data.json}"
 REFRESH_INTERVAL="${PORT_FORWARD_REFRESH_INTERVAL:-900}" # 15 minutes default
+METRICS_FILE="${METRICS_FILE:-/tmp/pia-metrics.txt}"
 
 # qBittorrent settings
 QBITTORRENT_HOST="${QBITTORRENT_HOST:-}"
@@ -249,17 +284,20 @@ bind_port() {
         status=$(echo "${response}" | jq -r '.status')
         if [[ "${status}" == "OK" ]]; then
             log "Port ${port} bound successfully"
+            increment_metric "pia_refresh_success_total"
             return 0
         else
             local message
             message=$(echo "${response}" | jq -r '.message // "Unknown error"')
             warn "Port bind returned status ${status}: ${message}"
+            increment_metric "pia_refresh_failure_total"
             return 1
         fi
     fi
 
     # If no status field, assume success
     log "Port binding completed"
+    increment_metric "pia_refresh_success_total"
     return 0
 }
 
@@ -310,9 +348,11 @@ qb_set_port() {
 
     if [[ $? -eq 0 ]]; then
         log "qBittorrent port updated successfully to ${port}"
+        increment_metric "pia_qbittorrent_update_success_total"
         return 0
     else
         error "Failed to update qBittorrent port"
+        increment_metric "pia_qbittorrent_update_failure_total"
         return 1
     fi
 }
@@ -321,6 +361,15 @@ qb_set_port() {
 save_port_info() {
     local port=$1
     local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Check if port has changed
+    if [[ -f "${PORT_FILE}" ]]; then
+        local old_port=$(cat "${PORT_FILE}" 2>/dev/null || echo "")
+        if [[ -n "${old_port}" ]] && [[ "${old_port}" != "${port}" ]]; then
+            log "Port changed from ${old_port} to ${port}"
+            increment_metric "pia_port_changes_total"
+        fi
+    fi
 
     # Save simple port file
     mkdir -p "$(dirname "${PORT_FILE}")"
@@ -342,6 +391,9 @@ EOF
 main() {
     log "Starting PIA port forwarding manager"
     log "Refresh interval: ${REFRESH_INTERVAL} seconds"
+
+    # Initialize metrics tracking
+    init_metrics
 
     if [[ -n "${QBITTORRENT_HOST}" ]]; then
         log "qBittorrent integration enabled: ${QBITTORRENT_HOST}"

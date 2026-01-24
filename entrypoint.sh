@@ -68,6 +68,15 @@ EXTERNAL_IP=$(curl -s https://api.ipify.org 2>/dev/null || echo "unknown")
 log "External IP: ${EXTERNAL_IP}"
 log ""
 
+# Start HTTP server for health checks and metrics in background
+log "Starting HTTP server on port ${HTTP_PORT:-9090}..."
+/usr/local/bin/http-server.sh &
+HTTP_SERVER_PID=$!
+log "HTTP server started (PID: ${HTTP_SERVER_PID})"
+
+# Give HTTP server a moment to start
+sleep 1
+
 # Start port forwarding loop
 log "Starting port forwarding loop..."
 exec /usr/local/bin/port-forward-loop.sh

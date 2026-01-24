@@ -19,6 +19,9 @@ The container only handles the port forwarding API and refresh cycle.
 - No VPN overhead - works with existing VPN setup
 - Runs as non-root user (UID 1000) for security
 - OCI-compliant with proper labels
+- **Built-in health checks** via `/healthz` endpoint
+- **Prometheus metrics** via `/metrics` endpoint for monitoring
+- **Automatic container health monitoring** with Docker/Kubernetes probes
 
 ## How It Works
 
@@ -175,6 +178,8 @@ services:
       - QBITTORRENT_PASS=adminpass
     volumes:
       - ./pia-config:/config
+    # Optionally expose metrics port (through gluetun's network)
+    # Access via: curl http://<gluetun-ip>:9090/metrics
 ```
 
 ### Sharing Port with Other Containers
@@ -341,6 +346,102 @@ Detailed JSON with port and timing information:
   "timestamp": "2026-01-14T19:30:00Z",
   "next_refresh": "2026-01-14T19:45:00Z"
 }
+```
+
+## Monitoring & Health Checks
+
+The container exposes HTTP endpoints on port 9090 for monitoring and observability.
+
+### Health Check Endpoint
+
+**`GET /healthz`** - Returns health status of the container
+
+```bash
+curl http://localhost:9090/healthz
+```
+
+**Response:**
+- `200 OK` - Container is healthy
+- `503 Service Unavailable` - Container is unhealthy
+
+**Health checks verify:**
+- Port forwarding loop process is running
+- Port file exists and is recent (< 30 minutes old)
+- Port number is valid
+- PIA gateway is reachable (if configured)
+
+### Metrics Endpoint
+
+**`GET /metrics`** - Prometheus-compatible metrics
+
+```bash
+curl http://localhost:9090/metrics
+```
+
+**Available metrics:**
+- `pia_forwarded_port` - Current forwarded port number
+- `pia_port_file_age_seconds` - Age of port file in seconds
+- `pia_last_update_timestamp_seconds` - Unix timestamp of last update
+- `pia_process_running` - Whether port forwarding process is running (0/1)
+- `pia_refresh_success_total` - Total successful port refresh operations
+- `pia_refresh_failure_total` - Total failed port refresh operations
+- `pia_port_changes_total` - Total number of times port has changed
+- `pia_qbittorrent_update_success_total` - Successful qBittorrent updates
+- `pia_qbittorrent_update_failure_total` - Failed qBittorrent updates
+- `pia_qbittorrent_integration_enabled` - Whether qBittorrent integration is enabled (0/1)
+- `pia_container_uptime_seconds` - Container uptime in seconds
+
+### Prometheus Integration
+
+For Kubernetes with Prometheus Operator:
+
+```yaml
+# Enable ServiceMonitor in Helm values
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+```
+
+For standard Prometheus (add to `prometheus.yml`):
+
+```yaml
+scrape_configs:
+  - job_name: 'pia-portforward'
+    static_configs:
+      - targets: ['pia-portforward:9090']
+```
+
+### Docker Health Checks
+
+The container has built-in Docker health checks that run automatically:
+
+```bash
+# Check container health status
+docker ps
+# or
+docker inspect --format='{{.State.Health.Status}}' <container-id>
+```
+
+### Kubernetes Probes
+
+The Helm chart includes liveness and readiness probes that automatically monitor the container:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 9090
+  initialDelaySeconds: 30
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 9090
+  initialDelaySeconds: 10
+  periodSeconds: 10
 ```
 
 ## Troubleshooting

@@ -60,6 +60,10 @@ helm install pia-portforward ./chart \
 | `persistence.size` | PVC size | `1Mi` |
 | `resources.requests.memory` | Memory request | `64Mi` |
 | `resources.requests.cpu` | CPU request | `50m` |
+| `metrics.enabled` | Enable metrics service | `true` |
+| `metrics.serviceMonitor.enabled` | Create Prometheus ServiceMonitor | `false` |
+| `livenessProbe.initialDelaySeconds` | Liveness probe initial delay | `30` |
+| `readinessProbe.initialDelaySeconds` | Readiness probe initial delay | `10` |
 
 See [values.yaml](./values.yaml) for all available options.
 
@@ -172,6 +176,109 @@ Then read the port:
 
 ```bash
 port=$(cat /pia-config/pia-port.txt)
+```
+
+## Monitoring & Observability
+
+The chart includes built-in monitoring capabilities with health checks and Prometheus metrics.
+
+### Health Checks
+
+The deployment includes liveness and readiness probes that monitor the container's health:
+
+```bash
+# Check pod health status
+kubectl get pods -l app.kubernetes.io/name=pia-portforward
+
+# View health check details
+kubectl describe pod -l app.kubernetes.io/name=pia-portforward | grep -A 10 "Liveness\|Readiness"
+```
+
+The health endpoint (`/healthz`) verifies:
+- Port forwarding loop is running
+- Port file exists and is recent
+- Port number is valid
+- PIA gateway is reachable
+
+### Prometheus Metrics
+
+The container exposes Prometheus metrics on port 9090 at `/metrics`.
+
+**Enable metrics service:**
+
+```yaml
+metrics:
+  enabled: true
+  service:
+    type: ClusterIP
+    port: 9090
+```
+
+**Available metrics:**
+- `pia_forwarded_port` - Current forwarded port
+- `pia_refresh_success_total` - Successful refreshes
+- `pia_refresh_failure_total` - Failed refreshes
+- `pia_port_changes_total` - Port change count
+- `pia_qbittorrent_update_success_total` - qBittorrent update successes
+- `pia_qbittorrent_update_failure_total` - qBittorrent update failures
+- And more...
+
+### Prometheus Operator Integration
+
+For clusters with Prometheus Operator, enable ServiceMonitor:
+
+```bash
+helm install pia-portforward oci://ghcr.io/00o-sh/charts/pia-portforward \
+  --set pia.user=p1234567 \
+  --set pia.password=your_password \
+  --set metrics.enabled=true \
+  --set metrics.serviceMonitor.enabled=true \
+  --set metrics.serviceMonitor.labels.release=prometheus
+```
+
+Or in values.yaml:
+
+```yaml
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    labels:
+      release: prometheus  # Match your Prometheus Operator label selector
+```
+
+### Manual Metrics Access
+
+Port-forward to access metrics locally:
+
+```bash
+# Port forward the service
+kubectl port-forward svc/pia-portforward 9090:9090
+
+# View metrics
+curl http://localhost:9090/metrics
+
+# Check health
+curl http://localhost:9090/healthz
+```
+
+### Grafana Dashboard
+
+Example PromQL queries for dashboards:
+
+```promql
+# Current forwarded port
+pia_forwarded_port
+
+# Port refresh success rate
+rate(pia_refresh_success_total[5m]) / (rate(pia_refresh_success_total[5m]) + rate(pia_refresh_failure_total[5m]))
+
+# Time since last port update
+time() - pia_last_update_timestamp_seconds
+
+# qBittorrent update success rate
+rate(pia_qbittorrent_update_success_total[5m])
 ```
 
 ## Troubleshooting
